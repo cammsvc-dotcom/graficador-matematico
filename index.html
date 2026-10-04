@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Graficador Matemático</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#eef2f7;font-family:Arial,sans-serif;color:#172033}
+header{background:#172033;color:#fff;text-align:center;padding:22px}
+header h1{margin:0 0 7px;font-size:30px}
+header p{margin:0;color:#dce4f2}
+main{max-width:1150px;margin:24px auto;padding:0 16px}
+.card{background:#fff;border-radius:15px;padding:22px;margin-bottom:20px;box-shadow:0 4px 15px #0001}
+.input{display:flex;gap:10px}
+input{flex:1;padding:14px;border:2px solid #cbd5e1;border-radius:9px;font-size:18px}
+button{padding:13px 22px;border:0;border-radius:9px;background:#4169e1;color:#fff;font-weight:bold;font-size:16px;cursor:pointer}
+button:hover{background:#3155c9}
+.examples{margin-top:12px;font-size:14px;color:#64748b}
+.examples button{padding:7px 10px;margin:3px;background:#e8edff;color:#3155c9;font-size:13px}
+.columns{display:grid;grid-template-columns:1fr 1.2fr;gap:20px}
+@media(max-width:850px){.columns{grid-template-columns:1fr}}
+h2{margin-top:0}
+.step{background:#f6f8fc;border-left:5px solid #4169e1;border-radius:8px;padding:13px;margin:10px 0;line-height:1.65}
+.formula{font-size:22px;font-weight:bold;margin-top:6px}
+.badges{display:flex;gap:10px;flex-wrap:wrap}
+.badge{background:#172033;color:white;border-radius:20px;padding:9px 15px}
+.error{background:#fff0f0;color:#a61b1b;padding:14px;border-radius:8px}
+canvas{display:block;width:100%;height:auto;border:1px solid #d8dee8;border-radius:10px;background:#fff}
+.small{font-size:13px;color:#64748b}
+</style>
+</head>
+<body>
+<header>
+<h1>📐 Graficador Matemático</h1>
+<p>Resuelve y grafica ecuaciones de rectas</p>
+</header>
+
+<main>
+<div class="card">
+<h2>1. Escribe tu ecuación</h2>
+<div class="input">
+<input id="eq" value="-4x - 7y - 3 = 0" placeholder="Ejemplo: -4x - 7y - 3 = 0">
+<button onclick="graficar()">Graficar</button>
+</div>
+<div class="examples">
+Prueba:
+<button onclick="poner('-4x - 7y - 3 = 0')">-4x - 7y - 3 = 0</button>
+<button onclick="poner('2x - 4y + 6 = 0')">2x - 4y + 6 = 0</button>
+<button onclick="poner('y = 2x + 3')">y = 2x + 3</button>
+<button onclick="poner('3x + 2y - 8 = 0')">3x + 2y - 8 = 0</button>
+</div>
+</div>
+
+<div class="columns">
+<section>
+<div class="card">
+<h2>2. Procedimiento</h2>
+<div id="procedimiento"></div>
+</div>
+<div class="card">
+<h2>3. Resultado</h2>
+<div id="resultado"></div>
+</div>
+</section>
+
+<section class="card">
+<h2>4. Gráfica</h2>
+<canvas id="canvas" width="700" height="560"></canvas>
+<p class="small">La recta y la cuadrícula se ajustan automáticamente.</p>
+</section>
+</div>
+</main>
+
+<script>
+function poner(texto){
+  document.getElementById("eq").value=texto;
+  graficar();
+}
+
+function numero(texto){
+  if(texto==="" || texto==="+") return 1;
+  if(texto==="-") return -1;
+  return Number(texto);
+}
+
+function limpiar(texto){
+  return texto.toLowerCase()
+    .replace(/\s/g,"")
+    .replace(/−/g,"-")
+    .replace(/,/g,".");
+}
+
+function coeficientes(expr){
+  expr=expr.replace(/\(/g,"").replace(/\)/g,"");
+  if(expr[0] !== "+" && expr[0] !== "-") expr="+"+expr;
+
+  // Separa términos conservando sus signos
+  const terminos=expr.match(/[+-][^+-]+/g) || [];
+  let A=0,B=0,C=0;
+
+  for(const termino of terminos){
+    if(termino.includes("x")){
+      const n=termino.replace("x","");
+      A += numero(n);
+    }else if(termino.includes("y")){
+      const n=termino.replace("y","");
+      B += numero(n);
+    }else{
+      const n=Number(termino);
+      if(!Number.isNaN(n)) C+=n;
+    }
+  }
+  return {A,B,C};
+}
+
+function analizar(ecuacion){
+  let s=limpiar(ecuacion);
+  const partes=s.split("=");
+
+  if(partes.length!==2) throw new Error("Escribe una ecuación con el signo =.");
+
+  let izquierda=partes[0];
+  let derecha=partes[1];
+
+  // Pasamos derecha a izquierda: izquierda - derecha = 0
+  if(derecha!=="0"){
+    if(derecha.startsWith("-")) derecha="+"+derecha.slice(1);
+    else derecha="-"+derecha;
+    izquierda+=derecha;
+  }
+
+  const c=coeficientes(izquierda);
+
+  if(c.B===0) throw new Error("No puedo despejar y en esta ecuación. Usa una recta que tenga y.");
+
+  const m=-c.A/c.B;
+  const b=-c.C/c.B;
+
+  return {A:c.A,B:c.B,C:c.C,m,b};
+}
+
+function f(n){
+  if(Math.abs(n)<0.0000001)n=0;
+  return Number(n.toFixed(4)).toString();
+}
+
+function termino(coef,letra,primero){
+  if(Math.abs(coef)<0.0000001)return "";
+  let signo=coef<0?"-":(primero?"":"+");
+  let valor=Math.abs(coef);
+  let numero=valor===1?"":f(valor);
+  return signo+numero+letra;
+}
+
+function ecuacion(A,B,C){
+  let texto=termino(A,"x",true);
+  texto+=termino(B,"y",texto==="");
+  if(C!==0){
+    texto+=(C<0?"-":(texto===""?"":"+") )+f(Math.abs(C));
+  }
+  return (texto||"0")+" = 0";
+}
+
+function formaY(m,b){
+  let r="y = ";
+  if(m===0) return r+f(b);
+  if(m===1) r+="x";
+  else if(m===-1) r+="-x";
+  else r+=f(m)+"x";
+
+  if(b>0) r+=" + "+f(b);
+  if(b<0) r+=" - "+f(Math.abs(b));
+  return r;
+}
+
+function fraccion(n,d){
+  if(d===1)return f(n);
+  return "("+f(n)+"/"+f(d)+")";
+}
+
+function escapeHTML(s){
+  return s.replace(/[&<>"']/g,c=>({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+  }[c]));
+}
+
+function graficar(){
+  const entrada=document.getElementById("eq").value;
+  const p=document.getElementById("procedimiento");
+  const r=document.getElementById("resultado");
+
+  try{
+    const {A,B,C,m,b}=analizar(entrada);
+
+    p.innerHTML=`
+      <div class="step">
+        <b>1. Ecuación original</b>
+        <div class="formula">${escapeHTML(entrada)}</div>
+      </div>
+
+      <div class="step">
+        <b>2. Identificamos A, B y C</b>
+        <div class="formula">${ecuacion(A,B,C)}</div>
+        A = ${f(A)} &nbsp;&nbsp; B = ${f(B)} &nbsp;&nbsp; C = ${f(C)}
+      </div>
+
+      <div class="step">
+        <b>3. Despejamos y</b><br>
+        ${f(B)}y = ${f(-A)}x ${(-C)>=0?"+":"-"} ${f(Math.abs(-C))}<br>
+        y = ${fraccion(-A,B)}x ${(-C)>=0?"+":"-"} ${fraccion(Math.abs(C),Math.abs(B))}
+      </div>
+
+      <div class="step">
+        <b>4. Forma pendiente-intersección</b>
+        <div class="formula">${formaY(m,b)}</div>
+      </div>
+    `;
+
+    r.innerHTML=`
+      <div class="badges">
+        <span class="badge">m = ${f(m)}</span>
+        <span class="badge">b = ${f(b)}</span>
+      </div>
+      <p><b>Punto de intersección con Y:</b> (0, ${f(b)})</p>
+      <p><b>Tipo de pendiente:</b> ${m>0?"positiva":m<0?"negativa":"cero"}</p>
+    `;
+
+    dibujar(m,b);
+  }catch(error){
+    p.innerHTML='<div class="error">⚠️ '+error.message+'</div>';
+    r.innerHTML="";
+    borrar();
+  }
+}
+
+function borrar(){
+  const c=document.getElementById("canvas");
+  c.getContext("2d").clearRect(0,0,c.width,c.height);
+}
+
+function dibujar(m,b){
+  const c=document.getElementById("canvas");
+  const ctx=c.getContext("2d");
+  const W=c.width,H=c.height;
+  ctx.clearRect(0,0,W,H);
+
+  let rango=10;
+  const necesario=Math.max(Math.abs(b),Math.abs(m*8));
+  if(necesario>8) rango=Math.min(30,Math.ceil(necesario/2)*2);
+
+  const margen=55;
+  const escala=(Math.min(W,H)-2*margen)/(2*rango);
+  const ox=W/2, oy=H/2;
+
+  const px=x=>ox+x*escala;
+  const py=y=>oy-y*escala;
+
+  // Cuadrícula
+  for(let i=-rango;i<=rango;i++){
+    ctx.beginPath();
+    ctx.moveTo(px(i),py(-rango));
+    ctx.lineTo(px(i),py(rango));
+    ctx.strokeStyle=i===0?"#253044":"#e5e9f0";
+    ctx.lineWidth=i===0?2:1;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(px(-rango),py(i));
+    ctx.lineTo(px(rango),py(i));
+    ctx.strokeStyle=i===0?"#253044":"#e5e9f0";
+    ctx.lineWidth=i===0?2:1;
+    ctx.stroke();
+
+    if(i!==0){
+      ctx.fillStyle="#64748b";
+      ctx.font="12px Arial";
+      ctx.textAlign="center";
+      ctx.textBaseline="middle";
+      ctx.fillText(i,px(i),oy+16);
+      ctx.fillText(i,ox-17,py(i));
+    }
+  }
+
+  // Flechas y nombres
+  ctx.fillStyle="#253044";
+  ctx.beginPath();ctx.moveTo(W-margen+8,oy);ctx.lineTo(W-margen-4,oy-6);ctx.lineTo(W-margen-4,oy+6);ctx.fill();
+  ctx.beginPath();ctx.moveTo(ox,margen-8);ctx.lineTo(ox-6,margen+4);ctx.lineTo(ox+6,margen+4);ctx.fill();
+  ctx.font="bold 14px Arial";
+  ctx.fillText("x",W-margen+18,oy-12);
+  ctx.fillText("y",ox+14,margen-10);
+
+  // Buscar dos puntos donde la recta atraviesa el cuadro
+  const puntos=[];
+  function agregar(x,y){
+    if(x>=-rango-0.001&&x<=rango+0.001&&y>=-rango-0.001&&y<=rango+0.001)
+      puntos.push([x,y]);
+  }
+
+  agregar(-rango,m*(-rango)+b);
+  agregar(rango,m*rango+b);
+
+  if(Math.abs(m)>0.000001){
+    agregar((-rango-b)/m,-rango);
+    agregar((rango-b)/m,rango);
+  }
+
+  puntos.sort((a,b)=>a[0]-b[0]);
+
+  if(puntos.length>=2){
+    ctx.beginPath();
+    ctx.moveTo(px(puntos[0][0]),py(puntos[0][1]));
+    ctx.lineTo(px(puntos[puntos.length-1][0]),py(puntos[puntos.length-1][1]));
+    ctx.strokeStyle="#4169e1";
+    ctx.lineWidth=4;
+    ctx.stroke();
+  }
+
+  // Intersección con Y
+  if(b>=-rango&&b<=rango){
+    ctx.beginPath();
+    ctx.arc(px(0),py(b),6,0,Math.PI*2);
+    ctx.fillStyle="#e34d59";
+    ctx.fill();
+
+    ctx.fillStyle="#172033";
+    ctx.font="bold 13px Arial";
+    ctx.textAlign="left";
+    ctx.fillText("(0, "+f(b)+")",px(0)+10,py(b)-10);
+  }
+}
+
+graficar();
+</script>
+</body>
+</html>
